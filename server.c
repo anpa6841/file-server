@@ -8,10 +8,63 @@
 #define PORT 8080
 #define BUFFER_SIZE 1024
 #define MAX_CLIENTS 5
+#define MAX_USERS 4
+
+struct User {
+    char username[50];
+    char password[50];
+};
+
+struct User users[MAX_USERS] = {
+    {"bob", "pass"},
+    {"alice", "pass"},
+    {"mike", "pass"},
+    {"ross", "pass"}
+};
+
+int authenticate(char *username, char *password) {
+    int auth = 0;
+
+    for (int i = 0; i < MAX_USERS; i++) {
+        if (strcmp(users[i].username, username) == 0  && strcmp(users[i].password, password) == 0) {
+            auth = 1;
+            break;
+        }
+    }
+
+    return auth;
+}
 
 
-void handleClientRequest(int client_socket) {
-    send(client_socket, "hello", strlen("hello"), 0);
+void remove_client_socket(int client_socket, int *client_sockets) {
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (client_sockets[i] == client_socket) {
+            client_sockets[i] = 0;
+            break;
+        }
+    }
+}
+
+
+void handleClientRequest(int client_socket, int *client_sockets) {
+    char username[50];
+    char password[50];
+
+    send(client_socket, "Username: ", strlen("Username: "), 0);
+    recv(client_socket, username, 50, 0);
+    username[strcspn(username, "\n")] = 0; // remove trailing newline
+
+    send(client_socket, "Password: ", strlen("Password: "), 0);
+    recv(client_socket, password, 50, 0);
+    password[strcspn(password, "\n")] = 0; // remove trailing newline
+
+    if (authenticate(username, password)) {
+        send(client_socket, "Authentication successful.\n", strlen("Authentication successful.\n"), 0);
+    } else {
+        send(client_socket, "Authentication failed.\n", strlen("Authentication failed.\n"), 0);
+        close(client_socket);
+        remove_client_socket(client_socket, client_sockets);
+    }
     return;
 }
 
@@ -99,7 +152,7 @@ int main() {
             client_socket = client_sockets[i];
 
             if (FD_ISSET(client_socket, &readfds)) {
-                handleClientRequest(client_socket);
+                handleClientRequest(client_socket, client_sockets);
             }
         }   
     }
