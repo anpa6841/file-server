@@ -1,0 +1,42 @@
+#!/usr/bin/expect -f
+
+# Set variables
+set hostname "127.0.0.1"
+set port "8080"
+set username "bob"
+set password "pass"
+set action "download"
+set download_filename "zen.txt"
+set upload_filename "zen_1.txt"
+set upload_file_content [exec cat zen.txt]
+
+# Connect to the server
+spawn nc $hostname $port
+
+# Expect username prompt and send username
+expect "Username:"
+send "$username\n"
+
+# Expect password prompt and send password
+expect "Password:"
+send "$password\n"
+
+# Wait for authentication, then send download command
+expect "Authentication successful"
+expect "Please select 'upload' or 'download' action: "
+
+if {$action == "download"} {
+    send "$action\n"
+    expect "Enter Filename: "
+    send "$download_filename\n"
+} else {
+    send "$action\n"
+    expect "Enter Filename: "
+    send "$upload_filename\n"
+    send "$upload_file_content\n"
+}
+
+expect "Transfer Complete"
+
+send "\003"
+expect eof

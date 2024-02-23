@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -46,26 +47,95 @@ void remove_client_socket(int client_socket, int *client_sockets) {
 }
 
 
-void handleClientRequest(int client_socket, int *client_sockets) {
+int handleClientAuth(int client_socket, int *client_sockets) {
     char username[50];
     char password[50];
 
     send(client_socket, "Username: ", strlen("Username: "), 0);
     recv(client_socket, username, 50, 0);
-    username[strcspn(username, "\n")] = 0; // remove trailing newline
+    username[strcspn(username, "\n")] = 0;
 
     send(client_socket, "Password: ", strlen("Password: "), 0);
     recv(client_socket, password, 50, 0);
-    password[strcspn(password, "\n")] = 0; // remove trailing newline
+    password[strcspn(password, "\n")] = 0;
 
     if (authenticate(username, password)) {
         send(client_socket, "Authentication successful.\n", strlen("Authentication successful.\n"), 0);
+        return 1;
     } else {
         send(client_socket, "Authentication failed.\n", strlen("Authentication failed.\n"), 0);
         close(client_socket);
         remove_client_socket(client_socket, client_sockets);
     }
-    return;
+    return 0;
+}
+
+
+void handleDownload(int client_socket, char *filename) {
+    char buffer[BUFFER_SIZE];
+    int bytes_read;
+
+    // Open file for reading
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        perror("File open");
+        return;
+    }
+
+    // Send filecontents to client
+    while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, file)) > 0) {
+        send(client_socket, buffer, bytes_read, 0);
+    }
+
+    send(client_socket, "Transfer Complete", strlen("Transfer Complete"), 0);
+    fclose(file);
+    printf("File sent: %s\n", filename);
+}
+
+
+void handleUpload(int client_socket, char *filename) {
+    char buffer[BUFFER_SIZE];
+    int bytes_received;
+
+    // Open file for writing
+    FILE *file = fopen(filename, "w");
+    if (!file) {
+        perror("File open");
+    }
+
+    // Receive file contents and write to file
+    while ((bytes_received = recv(client_socket, buffer, BUFFER_SIZE, 0)) > 0) {
+        fwrite(buffer, 1, bytes_received, file);
+    }
+
+    send(client_socket, "Transfer Complete", strlen("Transfer Complete"), 0);
+    fclose(file);
+    printf("File uploaded successfully: %s\n", filename);
+}
+
+
+void handleClientRequest(int client_socket, int *client_sockets) {
+    char action[20];
+    char filename[20];
+
+    char select_action[] = "Please select 'upload' or 'download' action: ";
+    char select_file[] = "Enter Filename: ";
+
+    send(client_socket, select_action, strlen(select_action), 0);
+    recv(client_socket, action, 20, 0);
+
+    send(client_socket, select_file, strlen(select_file), 0);
+    recv(client_socket, filename, 20, 0);
+
+    // remove trailing newline
+    action[strcspn(action, "\n")] = 0;
+    filename[strcspn(filename, "\n")] = 0;
+
+    if (strcmp(action, "download") == 0) {
+        handleDownload(client_socket, filename);
+    } else if (strcmp(action, "upload") == 0) {
+        handleUpload(client_socket, filename);
+    }
 }
 
 
@@ -152,7 +222,9 @@ int main() {
             client_socket = client_sockets[i];
 
             if (FD_ISSET(client_socket, &readfds)) {
-                handleClientRequest(client_socket, client_sockets);
+                if (handleClientAuth(client_socket, client_sockets)) {
+                    handleClientRequest(client_socket, client_sockets);
+                }
             }
         }   
     }
