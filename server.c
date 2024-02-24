@@ -60,10 +60,10 @@ int handleClientAuth(int client_socket, int *client_sockets) {
     password[strcspn(password, "\n")] = 0;
 
     if (authenticate(username, password)) {
-        send(client_socket, "Authentication successful.\n", strlen("Authentication successful.\n"), 0);
+        send(client_socket, "\nAuthentication successful.\n\n", strlen("\nAuthentication successful.\n\n"), 0);
         return 1;
     } else {
-        send(client_socket, "Authentication failed.\n", strlen("Authentication failed.\n"), 0);
+        send(client_socket, "\nAuthentication failed.\n\n", strlen("\nAuthentication failed.\n\n"), 0);
         close(client_socket);
         remove_client_socket(client_socket, client_sockets);
     }
@@ -87,7 +87,7 @@ void handleDownload(int client_socket, char *filename) {
         send(client_socket, buffer, bytes_read, 0);
     }
 
-    send(client_socket, "Transfer Complete", strlen("Transfer Complete"), 0);
+    send(client_socket, "\nTransfer Complete\n\n", strlen("\nTransfer Complete\n\n"), 0);
     fclose(file);
     printf("File sent: %s\n", filename);
 }
@@ -103,38 +103,53 @@ void handleUpload(int client_socket, char *filename) {
         perror("File open");
     }
 
-    // Receive file contents and write to file
-    while ((bytes_received = recv(client_socket, buffer, BUFFER_SIZE, 0)) > 0) {
-        fwrite(buffer, 1, bytes_received, file);
+    while (1) {
+        if ((bytes_received = read(client_socket, buffer, BUFFER_SIZE)) > 0) {
+            buffer[bytes_received] = '\0'; // Null terminate the received data
+
+            if (strcmp(buffer, "\n") == 0) {
+                printf("Client pressed Enter\n");
+                break;
+            }
+
+            fwrite(buffer, 1, bytes_received, file);
+        }
     }
 
-    send(client_socket, "Transfer Complete", strlen("Transfer Complete"), 0);
+    send(client_socket, "Transfer Complete\n", strlen("Transfer Complete\n"), 0);
     fclose(file);
     printf("File uploaded successfully: %s\n", filename);
 }
 
 
 void handleClientRequest(int client_socket, int *client_sockets) {
-    char action[20];
-    char filename[20];
+    char command[100];
+    char *action;
+    char *filename;
 
-    char select_action[] = "Please select 'upload' or 'download' action: ";
-    char select_file[] = "Enter Filename: ";
+    while (1) {
+        send(client_socket, "client: ", strlen("client: "), 0);
+        recv(client_socket, command, BUFFER_SIZE, 0);
 
-    send(client_socket, select_action, strlen(select_action), 0);
-    recv(client_socket, action, 20, 0);
+        action = strtok(command, " ");
+        filename = strtok(NULL, " ");
 
-    send(client_socket, select_file, strlen(select_file), 0);
-    recv(client_socket, filename, 20, 0);
+        // remove trailing newline
+        action[strcspn(action, "\n")] = 0;
 
-    // remove trailing newline
-    action[strcspn(action, "\n")] = 0;
-    filename[strcspn(filename, "\n")] = 0;
+        if (filename != NULL) {
+            filename[strcspn(filename, "\n")] = 0;
+        }
 
-    if (strcmp(action, "download") == 0) {
-        handleDownload(client_socket, filename);
-    } else if (strcmp(action, "upload") == 0) {
-        handleUpload(client_socket, filename);
+        if (strcmp(action, "download") == 0) {
+            handleDownload(client_socket, filename);
+        } else if (strcmp(action, "upload") == 0) {
+            handleUpload(client_socket, filename);
+        } else if (strcmp(action, "exit") == 0) {
+            close(client_socket);
+            remove_client_socket(client_socket, client_sockets);
+            break;
+        }
     }
 }
 

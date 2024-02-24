@@ -23,20 +23,20 @@ send "$password\n"
 
 # Wait for authentication, then send download command
 expect "Authentication successful"
-expect "Please select 'upload' or 'download' action: "
+expect "client: "
 
 if {$action == "download"} {
-    send "$action\n"
-    expect "Enter Filename: "
+    send "$action $download_filename\n"
     send "$download_filename\n"
-} else {
-    send "$action\n"
-    expect "Enter Filename: "
-    send "$upload_filename\n"
+}
+
+if {$action == "upload"} {
+    send "$action $upload_filename\n"
     send "$upload_file_content\n"
+    send "\r"
 }
 
 expect "Transfer Complete"
-
-send "\003"
+expect "client: "
+send "exit\n"
 expect eof
